@@ -1,3 +1,11 @@
+// Re-export API types for convenience
+export type {
+  ApiResponse,
+  Project,
+  CreateProjectDto,
+  UpdateProjectDto,
+} from '../services/api';
+
 // User
 export interface User {
   id: string;
@@ -5,24 +13,21 @@ export interface User {
   username: string;
   avatar_url?: string;
   subscription_tier: 'free' | 'pro' | 'plus';
+  subscription_renewal?: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Auth state
+export interface AuthState {
+  user: User | null;
+  session: any | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 // Projects
 export type ProjectType = 'novel' | 'short_story' | 'essay_collection' | 'non_fiction' | 'series_universe' | 'poetry' | 'blog';
-
-export interface Project {
-  id: string;
-  user_id: string;
-  title: string;
-  description?: string;
-  type: ProjectType;
-  status: 'draft' | 'in_progress' | 'published' | 'archived';
-  content: string;
-  word_count: number;
-  genre?: string;
-  created_at: string;
-  updated_at: string;
-}
 
 // Entities
 export type EntityType = 'character' | 'location' | 'theme' | 'plot_point' | 'chapter' | 'scene' | 'reference';

@@ -2,6 +2,8 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import projectsRouter from './routes/projects.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
 
@@ -113,30 +115,14 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 });
 
-// Projects Routes (Placeholder)
-app.get('/api/projects', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    data: [],
-    message: 'Projects endpoint - coming soon',
-  });
-});
+// Routes
+app.use('/api/projects', projectsRouter);
 
-app.post('/api/projects', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'Project creation - coming soon',
-  });
-});
+// 404 Handler
+app.use(notFoundHandler);
 
-// Error Handler
-app.use((err: any, req: Request, res: Response) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: err.message,
-  });
-});
+// Error Handler (must be last)
+app.use(errorHandler);
 
 // Start Server
 app.listen(PORT, () => {
