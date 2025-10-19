@@ -112,32 +112,87 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 ## Current State & Next Steps
 
 **Implemented:**
-- Basic project structure and build setup
-- Authentication routes (signup/login)
-- Frontend page scaffolding
-- Type definitions for entire data model
+- ✅ Basic project structure and build setup
+- ✅ Authentication routes (signup/login)
+- ✅ Frontend page scaffolding
+- ✅ Complete database schema with migrations (`backend/supabase/migrations/001_initial_schema.sql`)
+- ✅ Row Level Security (RLS) policies for all tables
+- ✅ Authentication middleware with JWT verification (`backend/src/middleware/auth.ts`)
+- ✅ Error handling middleware (`backend/src/middleware/errorHandler.ts`)
+- ✅ Projects CRUD API endpoints (`backend/src/routes/projects.ts`)
+- ✅ Subscription tier limits enforcement (Free: 3 projects, Pro/Plus: unlimited)
+- ✅ Frontend API service client with token management (`frontend/src/services/api.ts`)
+- ✅ Modular route structure (routes extracted from index.ts)
+- ✅ Type definitions for entire data model
 
 **Not Yet Implemented:**
-- Projects CRUD operations (routes are placeholders)
-- Entities/worldbuilding system
-- Publishing integrations
-- Analytics tracking
-- AI features
+- Entities/worldbuilding CRUD operations
+- Publishing integrations API
+- Analytics tracking and snapshots
+- AI features (cover generator, writing assistant)
 - Community/beta reader features
-- Actual database schema in Supabase (only users table mentioned in code)
+- Frontend state management (currently no global state)
+- Dashboard UI implementation (currently placeholder)
+- Editor UI implementation (currently placeholder)
+- Database migration application (SQL file exists, needs to be run in Supabase)
 
-**Architecture Debt:**
-- Backend routes should be extracted from `index.ts` to `backend/src/routes/`
-- Business logic should be extracted to `backend/src/services/`
-- No error middleware properly configured (placeholder exists but not used)
-- No authentication middleware for protected routes
+**Architecture Improvements Needed:**
+- Add React state management (Zustand store for auth, projects, entities)
+- Implement protected route wrapper for frontend
+- Add form validation library (React Hook Form + Zod)
+- Create reusable UI components (Button, Input, Card, Modal, etc.)
+- Add toast notifications for user feedback
+- Implement auto-save for editor
+- Add real-time collaboration features (Supabase Realtime)
 
 ## Development Workflow
+
+### First-Time Setup
+
+1. **Apply database migration**
+   - Go to Supabase SQL Editor
+   - Copy/paste contents of `backend/supabase/migrations/001_initial_schema.sql`
+   - Run the migration
+   - See `backend/supabase/README.md` for details
+
+2. **Configure environment variables**
+   - Backend: `cp backend/.env.example backend/.env`
+   - Frontend: `cp frontend/.env.example frontend/.env.local`
+   - Fill in Supabase credentials from your Supabase project
+
+3. **Install dependencies**
+   ```bash
+   cd backend && npm install
+   cd ../frontend && npm install
+   ```
+
+### Daily Development
 
 1. Start backend first: `cd backend && npm run dev`
 2. Start frontend: `cd frontend && npm run dev`
 3. Access app at http://localhost:5173
 4. Backend runs on http://localhost:3001
+
+### Testing API Endpoints
+
+```bash
+# Health check
+curl http://localhost:3001/api/health
+
+# Signup
+curl -X POST http://localhost:3001/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123","username":"testuser"}'
+
+# Login
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+
+# Get projects (requires auth token)
+curl http://localhost:3001/api/projects \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
 
 ## Subscription Tiers
 
