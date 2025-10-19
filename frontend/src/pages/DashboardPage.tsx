@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, Plus, LogOut } from 'lucide-react'
-import { Project } from '../types'
+import type { Project } from '../types'
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

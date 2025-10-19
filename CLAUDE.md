@@ -58,10 +58,12 @@ The project is a monorepo with separate frontend and backend directories. They a
 - `src/utils/` - Utility functions
 
 **Backend (Express API):**
-- `src/index.ts` - Main Express server with all routes (currently monolithic)
+- `src/index.ts` - Main Express server with authentication routes
 - `src/types.ts` - Shared TypeScript types (User, Project, Entity, PublishingConnection, etc.)
-- Routes are currently inline in `index.ts` - will need extraction to `routes/` directory
-- Business logic is inline - will need extraction to `services/` directory
+- `src/routes/` - Modular route handlers (projects.ts implemented)
+- `src/middleware/` - Authentication and error handling middleware
+  - `auth.ts` - JWT verification middleware with `authenticate` and `optionalAuth`
+  - `errorHandler.ts` - Centralized error handling with `ApiError` class
 
 ### Routing Structure
 
@@ -73,10 +75,16 @@ The project is a monorepo with separate frontend and backend directories. They a
 
 **Backend API Routes:**
 - `GET /api/health` - Health check endpoint
-- `POST /api/auth/signup` - User registration (creates Supabase auth + user profile)
-- `POST /api/auth/login` - User login via Supabase
-- `GET /api/projects` - Placeholder (returns empty array)
-- `POST /api/projects` - Placeholder
+- **Auth Routes (in src/index.ts):**
+  - `POST /api/auth/signup` - User registration (creates Supabase auth + user profile)
+  - `POST /api/auth/login` - User login via Supabase (returns session with JWT)
+- **Project Routes (in src/routes/projects.ts) - All require authentication:**
+  - `GET /api/projects` - Get all projects for authenticated user
+  - `GET /api/projects/:id` - Get specific project by ID
+  - `POST /api/projects` - Create new project (enforces subscription tier limits)
+  - `PATCH /api/projects/:id` - Update project (auto-calculates word_count from content)
+  - `DELETE /api/projects/:id` - Delete project (cascading delete via RLS)
+  - `POST /api/projects/:id/publish` - Mark project as published
 
 ### Data Model (from backend/src/types.ts)
 
@@ -101,13 +109,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 ```
 
 **Authentication Flow:**
-1. Signup creates Supabase auth user, then inserts profile into `users` table
-2. Login uses Supabase `signInWithPassword`
-3. Session tokens returned to frontend
+1. **Signup** (`POST /api/auth/signup`):
+   - Creates Supabase auth user with `signUpWithPassword`
+   - Inserts user profile into `users` table with `subscription_tier: 'free'`
+   - Returns user object and success message
+2. **Login** (`POST /api/auth/login`):
+   - Authenticates with Supabase using `signInWithPassword`
+   - Returns user object and session (includes JWT access_token)
+   - Frontend stores token in localStorage and sets Authorization header
+3. **Protected Routes**:
+   - Use `authenticate` middleware from `backend/src/middleware/auth.ts`
+   - Middleware extracts JWT from `Authorization: Bearer <token>` header
+   - Verifies token with `supabase.auth.getUser(token)`
+   - Attaches `req.user` object with `{ id, email, role }` for use in route handlers
+4. **Token Refresh**:
+   - Frontend API client auto-redirects to `/auth` on 401 responses
+   - Token stored in localStorage survives page refreshes
 
-**Database Tables (inferred):**
-- `users` - User profiles (id, email, username, subscription_tier, created_at)
-- Additional tables for projects, entities, etc. need to be created in Supabase
+**Database Tables (defined in backend/supabase/migrations/001_initial_schema.sql):**
+- `users` - User profiles with subscription tiers
+- `projects` - Writing projects with content, metadata, and publishing status
+- `entities` - Flexible entity system for characters, locations, themes, etc.
+- `publishing_connections` - Platform API credentials (one per user per platform)
+- `publishing_schedules` - Scheduled publishing to external platforms
+- `analytics_snapshots` - Time-series metrics data (JSONB format)
+
+**Important Database Features:**
+- All tables have RLS (Row Level Security) enabled
+- Automatic `updated_at` triggers on users, projects, and entities
+- Cascading deletes configured (e.g., deleting project deletes all entities)
+- JSONB columns for flexible metadata storage
+- Comprehensive indexes for performance
 
 ## Current State & Next Steps
 
@@ -126,15 +158,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 - ✅ Type definitions for entire data model
 
 **Not Yet Implemented:**
-- Entities/worldbuilding CRUD operations
-- Publishing integrations API
-- Analytics tracking and snapshots
+- Entities/worldbuilding CRUD operations (schema ready, routes needed)
+- Publishing integrations API (connections and schedules tables ready)
+- Analytics tracking and snapshots (table ready, collection logic needed)
 - AI features (cover generator, writing assistant)
 - Community/beta reader features
-- Frontend state management (currently no global state)
-- Dashboard UI implementation (currently placeholder)
-- Editor UI implementation (currently placeholder)
-- Database migration application (SQL file exists, needs to be run in Supabase)
+- Frontend state management (Zustand installed but not configured)
+- Dashboard UI implementation (page exists but minimal)
+- Editor UI implementation (page exists but minimal)
+- Protected routes on frontend (all routes currently public)
 
 **Architecture Improvements Needed:**
 - Add React state management (Zustand store for auth, projects, entities)
@@ -144,6 +176,90 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 - Add toast notifications for user feedback
 - Implement auto-save for editor
 - Add real-time collaboration features (Supabase Realtime)
+
+## Backend Development Patterns
+
+### Error Handling
+All route handlers should use the `ApiError` class from `backend/src/middleware/errorHandler.ts`:
+
+```typescript
+import { ApiError } from '../middleware/errorHandler.js';
+
+// Throw errors with status code and message
+throw new ApiError(404, 'Project not found');
+throw new ApiError(403, 'Project limit reached for free tier');
+throw new ApiError(400, 'Title and type are required');
+```
+
+The centralized error handler middleware catches all errors and formats consistent JSON responses.
+
+### Authentication Middleware
+Protected routes must use the `authenticate` middleware:
+
+```typescript
+import { authenticate } from '../middleware/auth.js';
+
+router.get('/', authenticate, async (req: Request, res: Response) => {
+  const userId = req.user!.id; // req.user is guaranteed after authenticate
+  // ...
+});
+```
+
+Use `optionalAuth` for routes that work differently for authenticated vs anonymous users.
+
+### Route Structure
+New route modules should follow the pattern in `backend/src/routes/projects.ts`:
+- Import Router from express
+- Import supabase client from `../index.js` (note the .js extension for ESM)
+- Import authentication middleware
+- Export router as default
+- Register in `backend/src/index.ts` with `app.use('/api/resource', resourceRouter)`
+
+### TypeScript ESM Configuration
+The backend uses TypeScript with ESM modules:
+- All imports must include `.js` extension even for `.ts` files
+- `package.json` has `"type": "module"`
+- tsconfig.json uses `"module": "NodeNext"`
+- Use `import` not `require`
+
+## Frontend Development Patterns
+
+### API Client (frontend/src/services/api.ts)
+The frontend uses a singleton API client instance exported as `api`:
+
+```typescript
+import { api } from '../services/api';
+
+// Authentication
+const response = await api.login(email, password); // Auto-stores token
+api.logout(); // Clears token from localStorage
+
+// Projects
+const projects = await api.getProjects();
+const project = await api.getProject(id);
+const newProject = await api.createProject({ title, type });
+const updated = await api.updateProject(id, { content: '...' });
+await api.deleteProject(id);
+await api.publishProject(id);
+```
+
+**Key Features:**
+- Axios interceptor automatically adds `Authorization: Bearer <token>` header
+- Token persisted in localStorage (survives page refresh)
+- 401 responses auto-redirect to `/auth` and clear token
+- All methods return `ApiResponse<T>` with `{ success, data, error, message }` structure
+
+### State Management
+Zustand is installed but not yet configured. When implementing stores:
+- Create store in `frontend/src/stores/` directory
+- Follow Zustand patterns for TypeScript
+- Consider stores for: auth state, current user, projects list, active project
+
+### Route Protection
+Currently all routes are public. Implement a `ProtectedRoute` wrapper component that:
+- Checks for token in localStorage on mount
+- Redirects to `/auth` if no token
+- Optionally validates token with backend `/api/health` or similar
 
 ## Development Workflow
 
@@ -184,18 +300,44 @@ curl -X POST http://localhost:3001/api/auth/signup \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123","username":"testuser"}'
 
-# Login
+# Login (save the access_token from session object)
 curl -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123"}'
 
-# Get projects (requires auth token)
+# Get all projects (requires auth token)
 curl http://localhost:3001/api/projects \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+# Create a project
+curl -X POST http://localhost:3001/api/projects \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My Novel","type":"novel","description":"A great story","genre":"Fantasy"}'
+
+# Update a project
+curl -X PATCH http://localhost:3001/api/projects/PROJECT_ID \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Chapter 1\n\nIt was a dark and stormy night...","status":"in_progress"}'
+
+# Publish a project
+curl -X POST http://localhost:3001/api/projects/PROJECT_ID/publish \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+# Delete a project
+curl -X DELETE http://localhost:3001/api/projects/PROJECT_ID \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ## Subscription Tiers
 
-- **Free:** 3 projects, basic editor, 1 platform connection
+- **Free:** 3 projects max, basic editor, 1 platform connection
 - **Pro ($9.99/mo):** Unlimited projects, 5 platform connections
 - **Plus ($24.99/mo):** Everything in Pro + AI assistant + community features
+
+**Tier Enforcement (backend/src/routes/projects.ts:9-13):**
+- Project creation checks `TIER_LIMITS` constant
+- Free tier users blocked at 3 projects with 403 error
+- Pro/Plus users have `Infinity` project limit
+- Limit checked by counting existing projects for user before creation

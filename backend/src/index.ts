@@ -44,7 +44,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
       return;
     }
 
-    const { data, error } = await supabase.auth.signUpWithPassword({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
